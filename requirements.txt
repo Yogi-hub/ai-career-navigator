@@ -1,0 +1,26 @@
+# --- Orchestration & LLM ---
+langchain>=0.3.0
+langgraph>=0.2.0
+langchain-openai>=0.2.0
+openai
+tavily-python>=0.7.12
+langchain-community>=0.3.0
+langchain-groq
+
+# --- Document Intelligence ---
+docling>=2.0.0
+langchain-docling>=0.2.0
+docx2txt 
+pypdf
+
+# --- Web & API ---
+fastapi
+uvicorn
+python-dotenv
+python-multipart
+streamlit 
+# --- Data & Notebook ---
+pandas
+ipykernel
+notebook
+gradio>=4.0.0
