@@ -1,82 +1,120 @@
 import streamlit as st
-import os
 import uuid
+from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage
 from backend import app
 
-# Page configuration
-st.set_page_config(page_title="Global Career Advisor", layout="centered")
-st.title("Global Career Guidance Engine")
+# Setup
+st.set_page_config(page_title="Groovia", layout="centered")
 
-# Initialize session state
+# CSS
+st.markdown("""
+    <style>
+    /* Remove background from all chat avatar containers */
+    div[data-testid^="stChatMessageAvatar"] {
+        background-color: transparent !important;
+        border: none !important;
+    }
+    
+    /* Remove background from inner avatar elements */
+    div[data-testid^="stChatMessageAvatar"] > div {
+        background-color: transparent !important;
+    }
+
+    /* Increase icon size */
+    div[data-testid^="stChatMessageAvatar"] span, 
+    div[data-testid^="stChatMessageAvatar"] img {
+        font-size: 2.5rem !important;
+        width: 45px !important;
+        height: 45px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Assets
+LOGO_PATH = r"assets\Immigroov_Transparent_Logo.png"
+USER_ICON = "👤"
+BOT_ICON = "🤖"
+
+# Sidebar
+with st.sidebar:
+    if Path(LOGO_PATH).exists():
+        # Updated width parameter for 2026
+        st.image(LOGO_PATH, width='stretch')
+    else:
+        st.error(f"Logo not found at: {LOGO_PATH}")
+    
+    st.markdown("---")
+    st.write("### Session Controls")
+    if st.button("Clear Chat & Restart"):
+        st.session_state.clear()
+        st.rerun()
+
+# Titles
+st.title("Groovia")
+st.subheader("Immigroov's Virtual Intelligent Assistant")
+
+# State
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Welcome! Please upload your resume in the sidebar so I can analyze your background and map your global career opportunities."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Welcome! Please attach your resume using the button below so I can begin your global career analysis."}]
 if "resume_uploaded" not in st.session_state:
     st.session_state.resume_uploaded = False
-    
+
 config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
-# Sidebar for file upload
-with st.sidebar:
-    st.header("Resume Upload")
-    uploaded_file = st.file_uploader("Upload PDF or DOCX", type=["pdf", "docx"])
+# UI
+col1, col2 = st.columns([1, 4])
+with col1:
+    with st.popover("📎 Attach"):
+        uploaded_file = st.file_uploader("Upload Resume", type=["pdf", "docx"])
+
+# Logic
+if uploaded_file and not st.session_state.resume_uploaded:
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+    file_path = data_dir / uploaded_file.name
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
     
-    if uploaded_file and not st.session_state.resume_uploaded:
-        os.makedirs("data", exist_ok=True)
-        file_path = os.path.join("data", uploaded_file.name).replace("\\", "/")
-        with open(file_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        
-        # Initial trigger message
-        initial_msg = f"Help me with my career based on my resume."
-        inputs = {
-            "messages": [HumanMessage(content=initial_msg)],
-            "resume_path": file_path,
-            "revision_count": 0
-        }
-        with st.spinner("Analyzing resume..."):
-            for event in app.stream(inputs, config):
-                pass
-            
-            # Grab the agent's response and update the UI
-            state = app.get_state(config)
-            last_msg = state.values["messages"][-1]
-            
-            # Save both the invisible prompt and the agent's reply to the chat history
-            st.session_state.messages.append({"role": "user", "content": initial_msg})
-            st.session_state.messages.append({"role": "assistant", "content": last_msg.content})
-        
+    inputs = {
+        "messages": [HumanMessage(content="Analyze my resume.")],
+        "resume_path": str(file_path),
+        "revision_count": 0
+    }
+    
+    with st.spinner("Analyzing..."):
+        for event in app.stream(inputs, config):
+            pass 
+        state = app.get_state(config)
+        last_msg = state.values["messages"][-1]
+        st.session_state.messages.append({"role": "assistant", "content": last_msg.content})
         st.session_state.resume_uploaded = True
-        st.success("Resume processed!")
-        
-        # Force the UI to refresh so the chat appears <---
         st.rerun()
 
-# Display chat history
+# Chat
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    icon = BOT_ICON if msg["role"] == "assistant" else USER_ICON
+    with st.chat_message(msg["role"], avatar=icon):
+        st.markdown(msg.get("content", ""))
 
-# User input loop
+# Input
 if prompt := st.chat_input("Ask about your career..."):
-    # Store user message
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=USER_ICON):
         st.markdown(prompt)
 
-    # Agent response
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
+    with st.chat_message("assistant", avatar=BOT_ICON):
+        with st.spinner("Consulting..."):
             user_input = {"messages": [HumanMessage(content=prompt)]}
-            final_content = ""
             for event in app.stream(user_input, config):
-                # Update UI with the final state message
-                state = app.get_state(config)
-                last_msg = state.values["messages"][-1]
-                if isinstance(last_msg, AIMessage):
-                    final_content = last_msg.content
+                pass
+            state = app.get_state(config)
+            final_msg = state.values["messages"][-1].content
             
-            st.markdown(final_content)
-            st.session_state.messages.append({"role": "assistant", "content": final_content})
+            if not final_msg:
+                final_msg = "Error: Please try again."
+                
+            st.markdown(final_msg)
+            st.session_state.messages.append({"role": "assistant", "content": final_msg})
